@@ -31,9 +31,17 @@ Also, statically configured MCP servers load all their tools into context at sta
 
 ## Install
 
-|  | <a href="#github-releases">GitHub Releases</a> | <a href="#go-install">go install</a> |
-|---|---|---|
-| Prerequisite | None | Go |
+### Coding agent (Claude Code, Codex, OpenCode, etc.)
+
+Paste this into your agent:
+
+> Install and configure mcp-supervisor using https://github.com/miyamiyaz/mcp-supervisor
+
+### mise (recommended)
+
+```bash
+mise use -g ubi:miyamiyaz/mcp-supervisor
+```
 
 ### GitHub Releases
 
