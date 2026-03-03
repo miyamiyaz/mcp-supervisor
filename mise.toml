@@ -1,0 +1,21 @@
+[tools]
+go = "latest"
+goreleaser = "latest"
+
+[tasks.build]
+run = "go build -o supervisor-mcp ./cmd/supervisor-mcp"
+
+[tasks.fmt]
+run = "go fmt ./..."
+
+[tasks.lint]
+run = "go vet ./..."
+
+[tasks.test]
+run = "go test -v -count=1 ./..."
+
+[tasks.clean]
+run = "rm -f supervisor-mcp"
+
+[tasks.release-dry]
+run = "goreleaser release --snapshot --clean"
