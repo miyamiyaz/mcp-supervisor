@@ -40,7 +40,7 @@ Paste this into your agent:
 ### mise (recommended)
 
 ```bash
-mise use -g ubi:miyamiyaz/mcp-supervisor
+mise use -g "github:miyamiyaz/mcp-supervisor[exe=supervisor-mcp]"
 ```
 
 ### GitHub Releases
