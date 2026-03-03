@@ -15,6 +15,19 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "-h", "--help", "help":
+			fmt.Println("Usage: supervisor-mcp")
+			fmt.Println()
+			fmt.Println("MCP server (stdio) that dynamically starts, stops, and proxies other MCP servers.")
+			fmt.Println()
+			fmt.Println("Register with Claude Code:")
+			fmt.Println("  claude mcp add supervisor -- supervisor-mcp")
+			os.Exit(0)
+		}
+	}
+
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.Ltime | log.Lshortfile)
 

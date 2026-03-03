@@ -35,7 +35,7 @@ Also, statically configured MCP servers load all their tools into context at sta
 
 Paste this into your agent:
 
-> Install and configure mcp-supervisor using https://github.com/miyamiyaz/mcp-supervisor
+> Install mcp-supervisor using https://github.com/miyamiyaz/mcp-supervisor and register it with `claude mcp add supervisor -- supervisor-mcp`
 
 ### mise (recommended)
 
