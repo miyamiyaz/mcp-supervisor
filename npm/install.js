@@ -53,7 +53,7 @@ function fetch(url) {
 function extractTarGz(buf, destDir) {
   const tmp = path.join(destDir, "_archive.tar.gz");
   fs.writeFileSync(tmp, buf);
-  execSync(`tar xzf ${JSON.stringify(tmp)} -C ${JSON.stringify(destDir)}`);
+  execSync("tar", ["xzf", tmp, "-C", destDir]);
   fs.unlinkSync(tmp);
 }
 
