@@ -1,3 +1,4 @@
 /supervisor-mcp
 /dist/
+npm/bin/
 .claude/settings.local.json

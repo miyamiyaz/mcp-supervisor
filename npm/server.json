@@ -1,0 +1,13 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.miyamiyaz/mcp-supervisor",
+  "description": "MCP server that dynamically starts and manages other MCP servers",
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registry_type": "npm",
+      "identifier": "mcp-supervisor",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}
