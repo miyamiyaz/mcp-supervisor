@@ -3,6 +3,23 @@
   "version": "0.0.0",
   "description": "MCP server that dynamically starts and manages other MCP servers",
   "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "mcp-manager",
+    "mcp-proxy",
+    "mcp-orchestrator",
+    "claude-code",
+    "codex",
+    "opencode",
+    "cline",
+    "cursor",
+    "gemini-cli",
+    "copilot",
+    "ai-agent",
+    "llm"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/miyamiyaz/mcp-supervisor"
