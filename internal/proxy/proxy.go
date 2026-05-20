@@ -10,18 +10,27 @@ import (
 
 	"github.com/miyamiyaz/mcp-supervisor/internal/childmcp"
 	"github.com/miyamiyaz/mcp-supervisor/internal/mcp"
+	"github.com/miyamiyaz/mcp-supervisor/internal/remotemcp"
 )
+
+// Client is the common interface for stdio and remote MCP connections.
+type Client interface {
+	Tools() []mcp.Tool
+	CallTool(ctx context.Context, params mcp.ToolCallParams) (mcp.ToolResult, error)
+	Stop()
+	Info() map[string]any
+}
 
 // Proxy manages child MCP servers and proxies their tools.
 type Proxy struct {
 	mu        sync.RWMutex
-	children  map[string]*childmcp.Child // keyed by name
-	onChanged func()                     // called when tool list changes
+	children  map[string]Client
+	onChanged func()
 }
 
 func New(onChanged func()) *Proxy {
 	return &Proxy{
-		children:  make(map[string]*childmcp.Child),
+		children:  make(map[string]Client),
 		onChanged: onChanged,
 	}
 }
@@ -33,21 +42,26 @@ func (p *Proxy) SetOnChanged(fn func()) {
 	p.onChanged = fn
 }
 
-// StartMCP params
+// StartParams for start_mcp. Exactly one of Command or URL must be set.
 type StartParams struct {
 	Name    string            `json:"name"`
-	Command string            `json:"command"`
-	Args    []string          `json:"args"`
-	Env     map[string]string `json:"env"`
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	URL     string            `json:"url,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
-// StartMCP launches a child MCP, registers its tools, and notifies the client.
+// StartMCP launches or connects to a child MCP, registers its tools, and notifies the client.
 func (p *Proxy) StartMCP(ctx context.Context, params StartParams) (map[string]any, error) {
 	if params.Name == "" {
 		return nil, fmt.Errorf("name is required")
 	}
-	if params.Command == "" {
-		return nil, fmt.Errorf("command is required")
+	if params.Command == "" && params.URL == "" {
+		return nil, fmt.Errorf("either command or url is required")
+	}
+	if params.Command != "" && params.URL != "" {
+		return nil, fmt.Errorf("only one of command or url may be set")
 	}
 
 	p.mu.Lock()
@@ -57,42 +71,46 @@ func (p *Proxy) StartMCP(ctx context.Context, params StartParams) (map[string]an
 	}
 	p.mu.Unlock()
 
-	// Build env slice: inherit parent env + overrides
-	var env []string
-	if len(params.Env) > 0 {
-		env = mergeEnv(params.Env)
-	}
-
-	child, err := childmcp.Start(ctx, params.Name, params.Command, params.Args, env)
-	if err != nil {
-		return nil, err
+	var client Client
+	if params.URL != "" {
+		remote, err := remotemcp.Connect(ctx, params.Name, params.URL, params.Headers)
+		if err != nil {
+			return nil, err
+		}
+		client = remote
+	} else {
+		var env []string
+		if len(params.Env) > 0 {
+			env = mergeEnv(params.Env)
+		}
+		child, err := childmcp.Start(ctx, params.Name, params.Command, params.Args, env)
+		if err != nil {
+			return nil, err
+		}
+		client = child
 	}
 
 	p.mu.Lock()
-	p.children[params.Name] = child
+	p.children[params.Name] = client
 	p.mu.Unlock()
 
 	if p.onChanged != nil {
 		p.onChanged()
 	}
 
-	toolNames := make([]string, len(child.Tools))
-	for i, t := range child.Tools {
+	info := client.Info()
+	toolNames := make([]string, len(client.Tools()))
+	for i, t := range client.Tools() {
 		toolNames[i] = t.Name
 	}
-
-	return map[string]any{
-		"name":   params.Name,
-		"pid":    child.Pid(),
-		"tools":  toolNames,
-		"status": "running",
-	}, nil
+	info["tools"] = toolNames
+	return info, nil
 }
 
 // StopMCP stops a child MCP by name.
 func (p *Proxy) StopMCP(name string) error {
 	p.mu.Lock()
-	child, ok := p.children[name]
+	client, ok := p.children[name]
 	if !ok {
 		p.mu.Unlock()
 		return fmt.Errorf("mcp %q not found", name)
@@ -100,7 +118,7 @@ func (p *Proxy) StopMCP(name string) error {
 	delete(p.children, name)
 	p.mu.Unlock()
 
-	child.Stop()
+	client.Stop()
 
 	if p.onChanged != nil {
 		p.onChanged()
@@ -114,17 +132,14 @@ func (p *Proxy) ListMCPs() []map[string]any {
 	defer p.mu.RUnlock()
 
 	result := make([]map[string]any, 0, len(p.children))
-	for name, child := range p.children {
-		toolNames := make([]string, len(child.Tools))
-		for i, t := range child.Tools {
+	for _, client := range p.children {
+		info := client.Info()
+		toolNames := make([]string, len(client.Tools()))
+		for i, t := range client.Tools() {
 			toolNames[i] = t.Name
 		}
-		result = append(result, map[string]any{
-			"name":    name,
-			"command": child.Command,
-			"status":  "running",
-			"tools":   toolNames,
-		})
+		info["tools"] = toolNames
+		result = append(result, info)
 	}
 	return result
 }
@@ -135,8 +150,8 @@ func (p *Proxy) Tools() []mcp.Tool {
 	defer p.mu.RUnlock()
 
 	var tools []mcp.Tool
-	for name, child := range p.children {
-		for _, t := range child.Tools {
+	for name, client := range p.children {
+		for _, t := range client.Tools() {
 			tools = append(tools, mcp.Tool{
 				Name:        name + "." + t.Name,
 				Description: fmt.Sprintf("[%s] %s", name, t.Description),
@@ -156,33 +171,29 @@ func (p *Proxy) CallTool(ctx context.Context, params mcp.ToolCallParams) (mcp.To
 	childName, toolName := parts[0], parts[1]
 
 	p.mu.RLock()
-	child, ok := p.children[childName]
+	client, ok := p.children[childName]
 	p.mu.RUnlock()
 
 	if !ok {
 		return mcp.ToolResult{}, fmt.Errorf("mcp %q not found", childName)
 	}
 
-	childParams := mcp.ToolCallParams{
-		Name:      toolName,
-		Arguments: params.Arguments,
-	}
-	return child.CallTool(ctx, childParams)
+	return client.CallTool(ctx, mcp.ToolCallParams{Name: toolName, Arguments: params.Arguments})
 }
 
 // StopAll stops all child MCPs. Used during shutdown.
 func (p *Proxy) StopAll() {
 	p.mu.Lock()
-	children := make(map[string]*childmcp.Child, len(p.children))
+	children := make(map[string]Client, len(p.children))
 	for k, v := range p.children {
 		children[k] = v
 	}
-	p.children = make(map[string]*childmcp.Child)
+	p.children = make(map[string]Client)
 	p.mu.Unlock()
 
-	for name, child := range children {
+	for name, client := range children {
 		log.Printf("stopping child mcp: %s", name)
-		child.Stop()
+		client.Stop()
 	}
 }
 

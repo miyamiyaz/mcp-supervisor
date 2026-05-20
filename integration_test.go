@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -257,7 +259,7 @@ func supervisorTools() []mcp.Tool {
 	return []mcp.Tool{
 		{
 			Name:        "start_mcp",
-			Description: "Start a child MCP server and proxy its tools",
+			Description: "Start or connect to a child MCP server and proxy its tools",
 			InputSchema: mustJSON(map[string]any{
 				"type": "object",
 				"properties": map[string]any{
@@ -265,8 +267,10 @@ func supervisorTools() []mcp.Tool {
 					"command": map[string]any{"type": "string"},
 					"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
 					"env":     map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
+					"url":     map[string]any{"type": "string"},
+					"headers": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
 				},
-				"required": []string{"name", "command"},
+				"required": []string{"name"},
 			}),
 		},
 		{
@@ -328,6 +332,130 @@ func textResult(v any) (mcp.ToolResult, error) {
 	return mcp.ToolResult{
 		Content: []mcp.Content{{Type: "text", Text: string(data)}},
 	}, nil
+}
+
+func TestRemoteMCP(t *testing.T) {
+	t.Run("json_response", func(t *testing.T) {
+		testRemoteMCP(t, false)
+	})
+	t.Run("sse_response", func(t *testing.T) {
+		testRemoteMCP(t, true)
+	})
+}
+
+// testRemoteMCP exercises the remote MCP path against a fake HTTP server.
+// When useSSE=true the server returns tools/call via SSE stream instead of JSON.
+func testRemoteMCP(t *testing.T, useSSE bool) {
+	t.Helper()
+	const sessionID = "test-session-42"
+	const bearerToken = "Bearer secret"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Assert custom header is forwarded on every request.
+		if r.Header.Get("Authorization") != bearerToken {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+
+		var req mcp.Request
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad request", http.StatusBadRequest)
+			return
+		}
+
+		// Notifications have no ID; acknowledge and return.
+		if req.ID == nil {
+			w.WriteHeader(http.StatusAccepted)
+			return
+		}
+
+		// Enforce session ID on all calls after initialize.
+		if req.Method != "initialize" && r.Header.Get("Mcp-Session-Id") != sessionID {
+			http.Error(w, "missing or wrong session", http.StatusBadRequest)
+			return
+		}
+
+		switch req.Method {
+		case "initialize":
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", sessionID)
+			json.NewEncoder(w).Encode(mcp.Response{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result: mustJSON(mcp.InitializeResult{
+					ProtocolVersion: "2024-11-05",
+					Capabilities:    mcp.ServerCapabilities{Tools: &mcp.ToolsCapability{}},
+					ServerInfo:      mcp.ServerInfo{Name: "remote-test", Version: "0.0.1"},
+				}),
+			})
+		case "tools/list":
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(mcp.Response{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result: mustJSON(mcp.ToolsListResult{
+					Tools: []mcp.Tool{{
+						Name:        "ping",
+						Description: "returns pong",
+						InputSchema: mustJSON(map[string]any{"type": "object", "properties": map[string]any{}}),
+					}},
+				}),
+			})
+		case "tools/call":
+			respMsg := mcp.Response{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result:  mustJSON(mcp.ToolResult{Content: []mcp.Content{{Type: "text", Text: "pong"}}}),
+			}
+			if useSSE {
+				w.Header().Set("Content-Type", "text/event-stream")
+				data, _ := json.Marshal(respMsg)
+				fmt.Fprintf(w, "event: message\ndata: %s\n\n", data)
+			} else {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(respMsg)
+			}
+		default:
+			http.Error(w, "unknown method", http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	p := proxy.New(nil)
+
+	result, err := p.StartMCP(ctx, proxy.StartParams{
+		Name:    "remote",
+		URL:     srv.URL,
+		Headers: map[string]string{"Authorization": bearerToken},
+	})
+	if err != nil {
+		t.Fatalf("start remote mcp: %v", err)
+	}
+	tools, _ := result["tools"].([]string)
+	if len(tools) != 1 || tools[0] != "ping" {
+		t.Fatalf("expected [ping], got %v", tools)
+	}
+
+	toolResult, err := p.CallTool(ctx, mcp.ToolCallParams{
+		Name:      "remote.ping",
+		Arguments: mustJSON(map[string]any{}),
+	})
+	if err != nil {
+		t.Fatalf("call remote.ping: %v", err)
+	}
+	if toolResult.Content[0].Text != "pong" {
+		t.Fatalf("expected pong, got %s", toolResult.Content[0].Text)
+	}
+
+	if err := p.StopMCP("remote"); err != nil {
+		t.Fatalf("stop remote mcp: %v", err)
+	}
+	if len(p.Tools()) != 0 {
+		t.Fatalf("expected no tools after stop")
+	}
 }
 
 func mustJSON(v any) json.RawMessage {

@@ -19,7 +19,7 @@ type Child struct {
 	Command string
 	Args    []string
 	Env     []string
-	Tools   []mcp.Tool // tools reported by the child
+	tools   []mcp.Tool // reported by child; access via Tools()
 
 	cmd       *exec.Cmd
 	transport *mcp.Transport
@@ -123,7 +123,7 @@ func Start(ctx context.Context, name, command string, args, env []string) (*Chil
 		c.Stop()
 		return nil, fmt.Errorf("fetch tools from %s: %w", name, err)
 	}
-	c.Tools = tools
+	c.tools = tools
 
 	return c, nil
 }
@@ -272,6 +272,20 @@ func (c *Child) CallTool(ctx context.Context, params mcp.ToolCallParams) (mcp.To
 		return mcp.ToolResult{}, fmt.Errorf("parse tools/call result: %w", err)
 	}
 	return result, nil
+}
+
+// Tools returns the tools advertised by the child MCP.
+func (c *Child) Tools() []mcp.Tool { return c.tools }
+
+// Info returns display info for list_mcps.
+func (c *Child) Info() map[string]any {
+	return map[string]any{
+		"name":      c.Name,
+		"command":   c.Command,
+		"transport": "stdio",
+		"status":    "running",
+		"pid":       c.Pid(),
+	}
 }
 
 // Pid returns the child process PID.
