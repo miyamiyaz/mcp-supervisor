@@ -64,18 +64,30 @@ func supervisorTools() []mcp.Tool {
 	return []mcp.Tool{
 		{
 			Name:        "start_mcp",
-			Description: "Start or connect to a child MCP server and proxy its tools. Provide command for stdio (subprocess), or url for remote (Streamable HTTP). Exactly one of command or url is required.",
+			Description: "Start or connect to a child MCP server and proxy its tools.",
 			InputSchema: mustJSON(map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"name":    map[string]any{"type": "string", "description": "Unique name for this MCP instance (used as tool prefix)"},
-					"command": map[string]any{"type": "string", "description": "Command to run (stdio transport)"},
-					"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Command arguments (stdio only)"},
-					"env":     map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Extra environment variables (stdio only, merged with parent env)"},
-					"url":     map[string]any{"type": "string", "description": "HTTP endpoint URL (Streamable HTTP transport, MCP 2025-03-26)"},
-					"headers": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "HTTP headers (e.g. Authorization: Bearer <token>)"},
+					"name": map[string]any{"type": "string", "description": "Unique name for this MCP instance (used as tool prefix)"},
 				},
 				"required": []string{"name"},
+				"oneOf": []any{
+					map[string]any{
+						"required": []string{"command"},
+						"properties": map[string]any{
+							"command": map[string]any{"type": "string", "description": "Command to run (stdio transport)"},
+							"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Command arguments"},
+							"env":     map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Extra environment variables (merged with parent env)"},
+						},
+					},
+					map[string]any{
+						"required": []string{"url"},
+						"properties": map[string]any{
+							"url":     map[string]any{"type": "string", "description": "HTTP endpoint URL (Streamable HTTP transport, MCP 2025-03-26)"},
+							"headers": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "HTTP headers (e.g. Authorization: Bearer <token>)"},
+						},
+					},
+				},
 			}),
 		},
 		{

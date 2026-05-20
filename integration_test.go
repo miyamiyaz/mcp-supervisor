@@ -263,14 +263,19 @@ func supervisorTools() []mcp.Tool {
 			InputSchema: mustJSON(map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"name":    map[string]any{"type": "string"},
-					"command": map[string]any{"type": "string"},
-					"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}},
-					"env":     map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
-					"url":     map[string]any{"type": "string"},
-					"headers": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}},
+					"name": map[string]any{"type": "string"},
 				},
 				"required": []string{"name"},
+				"oneOf": []any{
+					map[string]any{
+						"required":   []string{"command"},
+						"properties": map[string]any{"command": map[string]any{"type": "string"}, "args": map[string]any{"type": "array"}, "env": map[string]any{"type": "object"}},
+					},
+					map[string]any{
+						"required":   []string{"url"},
+						"properties": map[string]any{"url": map[string]any{"type": "string"}, "headers": map[string]any{"type": "object"}},
+					},
+				},
 			}),
 		},
 		{
