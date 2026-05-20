@@ -35,9 +35,31 @@ Also, statically configured MCP servers load all their tools into context at sta
 
 Paste this into your agent:
 
-> Install mcp-supervisor using https://github.com/miyamiyaz/mcp-supervisor and register it with `claude mcp add supervisor -- supervisor-mcp`
+> Install mcp-supervisor using https://github.com/miyamiyaz/mcp-supervisor and register it with `claude mcp add supervisor -- npx -y mcp-supervisor`
 
-### mise (recommended)
+### npx (recommended)
+
+No install needed — runs directly via Node.js:
+
+```bash
+claude mcp add supervisor -- npx -y mcp-supervisor
+```
+
+Or add to `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "supervisor": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "mcp-supervisor"]
+    }
+  }
+}
+```
+
+### mise
 
 ```bash
 mise use -g "github:miyamiyaz/mcp-supervisor[exe=supervisor-mcp]"
@@ -58,20 +80,7 @@ go install github.com/miyamiyaz/mcp-supervisor/cmd/supervisor-mcp@latest
 ### Claude Code
 
 ```bash
-claude mcp add supervisor -- supervisor-mcp
-```
-
-Or add to `.mcp.json` in your project root:
-
-```json
-{
-  "mcpServers": {
-    "supervisor": {
-      "type": "stdio",
-      "command": "supervisor-mcp"
-    }
-  }
-}
+claude mcp add supervisor -- npx -y mcp-supervisor
 ```
 
 ### Claude Desktop
@@ -82,7 +91,8 @@ Add to `claude_desktop_config.json`:
 {
   "mcpServers": {
     "supervisor": {
-      "command": "supervisor-mcp"
+      "command": "npx",
+      "args": ["-y", "mcp-supervisor"]
     }
   }
 }
@@ -112,12 +122,16 @@ When a child MCP is started with `name: "pw"`, all its tools become available wi
 
 ### start_mcp
 
+Exactly one of `command` (stdio) or `url` (HTTP) must be provided.
+
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | yes | Unique name (used as tool prefix) |
-| `command` | string | yes | Command to run |
-| `args` | string[] | no | Command arguments |
-| `env` | object | no | Extra env vars (merged with parent) |
+| `command` | string | one of | Command to run (stdio transport) |
+| `args` | string[] | no | Command arguments (stdio only) |
+| `env` | object | no | Extra env vars, merged with parent (stdio only) |
+| `url` | string | one of | HTTP endpoint URL (Streamable HTTP transport) |
+| `headers` | object | no | HTTP headers, e.g. `{"Authorization": "Bearer <token>"}` |
 
 ### stop_mcp
 
