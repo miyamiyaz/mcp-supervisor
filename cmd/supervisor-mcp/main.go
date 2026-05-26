@@ -14,11 +14,13 @@ import (
 	"github.com/miyamiyaz/mcp-supervisor/internal/proxy"
 )
 
+var version = "dev"
+
 func main() {
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "-h", "--help", "help":
-			fmt.Println("Usage: supervisor-mcp")
+			fmt.Printf("supervisor-mcp %s\n", version)
 			fmt.Println()
 			fmt.Println("MCP server (stdio) that dynamically starts, stops, and proxies other MCP servers.")
 			fmt.Println()
