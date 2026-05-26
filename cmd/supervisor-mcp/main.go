@@ -63,31 +63,30 @@ func main() {
 func supervisorTools() []mcp.Tool {
 	return []mcp.Tool{
 		{
-			Name:        "start_mcp",
-			Description: "Start or connect to a child MCP server and proxy its tools.",
+			Name:        "start_stdio_mcp",
+			Description: "Start a child MCP server via stdio transport and proxy its tools.",
 			InputSchema: mustJSON(map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"name": map[string]any{"type": "string", "description": "Unique name for this MCP instance (used as tool prefix)"},
+					"name":    map[string]any{"type": "string", "description": "Unique name for this MCP instance (used as tool prefix)"},
+					"command": map[string]any{"type": "string", "description": "Command to run"},
+					"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Command arguments"},
+					"env":     map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Extra environment variables (merged with parent env)"},
 				},
-				"required": []string{"name"},
-				"oneOf": []any{
-					map[string]any{
-						"required": []string{"command"},
-						"properties": map[string]any{
-							"command": map[string]any{"type": "string", "description": "Command to run (stdio transport)"},
-							"args":    map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Command arguments"},
-							"env":     map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "Extra environment variables (merged with parent env)"},
-						},
-					},
-					map[string]any{
-						"required": []string{"url"},
-						"properties": map[string]any{
-							"url":     map[string]any{"type": "string", "description": "HTTP endpoint URL (Streamable HTTP transport, MCP 2025-03-26)"},
-							"headers": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "HTTP headers (e.g. Authorization: Bearer <token>)"},
-						},
-					},
+				"required": []string{"name", "command"},
+			}),
+		},
+		{
+			Name:        "start_http_mcp",
+			Description: "Connect to a remote MCP server via Streamable HTTP transport (MCP 2025-03-26) and proxy its tools.",
+			InputSchema: mustJSON(map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":    map[string]any{"type": "string", "description": "Unique name for this MCP instance (used as tool prefix)"},
+					"url":     map[string]any{"type": "string", "description": "HTTP endpoint URL"},
+					"headers": map[string]any{"type": "object", "additionalProperties": map[string]any{"type": "string"}, "description": "HTTP headers (e.g. Authorization: Bearer <token>)"},
 				},
+				"required": []string{"name", "url"},
 			}),
 		},
 		{
@@ -123,7 +122,7 @@ func toolsProvider(p *proxy.Proxy) mcp.ToolsProvider {
 func toolHandler(ctx context.Context, p *proxy.Proxy) mcp.ToolHandler {
 	return func(params mcp.ToolCallParams) (mcp.ToolResult, error) {
 		switch params.Name {
-		case "start_mcp":
+		case "start_stdio_mcp", "start_http_mcp":
 			return handleStartMCP(ctx, p, params.Arguments)
 		case "stop_mcp":
 			return handleStopMCP(p, params.Arguments)

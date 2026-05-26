@@ -119,32 +119,32 @@ func TestIntegration(t *testing.T) {
 	if err := json.Unmarshal(resp.Result, &toolsList); err != nil {
 		t.Fatalf("parse tools/list: %v", err)
 	}
-	if len(toolsList.Tools) != 3 {
-		t.Fatalf("expected 3 supervisor tools, got %d", len(toolsList.Tools))
+	if len(toolsList.Tools) != 4 {
+		t.Fatalf("expected 4 supervisor tools, got %d", len(toolsList.Tools))
 	}
 
-	// 3. start_mcp with echomcp
+	// 3. start_stdio_mcp with echomcp
 	resp = send(t, "tools/call", mcp.ToolCallParams{
-		Name: "start_mcp",
+		Name: "start_stdio_mcp",
 		Arguments: mustJSON(map[string]any{
 			"name":    "test",
 			"command": echomcpBin,
 		}),
 	})
 	if resp.Error != nil {
-		t.Fatalf("start_mcp error: %s", resp.Error.Message)
+		t.Fatalf("start_stdio_mcp error: %s", resp.Error.Message)
 	}
 	var startResult mcp.ToolResult
 	if err := json.Unmarshal(resp.Result, &startResult); err != nil {
-		t.Fatalf("parse start_mcp result: %v", err)
+		t.Fatalf("parse start_stdio_mcp result: %v", err)
 	}
 	if startResult.IsError {
-		t.Fatalf("start_mcp returned error: %s", startResult.Content[0].Text)
+		t.Fatalf("start_stdio_mcp returned error: %s", startResult.Content[0].Text)
 	}
 	// Verify the response mentions the echo tool.
 	var startInfo map[string]any
 	if err := json.Unmarshal([]byte(startResult.Content[0].Text), &startInfo); err != nil {
-		t.Fatalf("parse start_mcp text: %v", err)
+		t.Fatalf("parse start_stdio_mcp text: %v", err)
 	}
 	tools, ok := startInfo["tools"].([]any)
 	if !ok || len(tools) != 1 {
@@ -156,12 +156,12 @@ func TestIntegration(t *testing.T) {
 	if err := json.Unmarshal(resp.Result, &toolsList); err != nil {
 		t.Fatalf("parse tools/list: %v", err)
 	}
-	if len(toolsList.Tools) != 4 {
+	if len(toolsList.Tools) != 5 {
 		names := make([]string, len(toolsList.Tools))
 		for i, tool := range toolsList.Tools {
 			names[i] = tool.Name
 		}
-		t.Fatalf("expected 4 tools, got %d: %v", len(toolsList.Tools), names)
+		t.Fatalf("expected 5 tools, got %d: %v", len(toolsList.Tools), names)
 	}
 	found := false
 	for _, tool := range toolsList.Tools {
@@ -207,12 +207,12 @@ func TestIntegration(t *testing.T) {
 	if err := json.Unmarshal(resp.Result, &toolsList); err != nil {
 		t.Fatalf("parse tools/list: %v", err)
 	}
-	if len(toolsList.Tools) != 3 {
+	if len(toolsList.Tools) != 4 {
 		names := make([]string, len(toolsList.Tools))
 		for i, tool := range toolsList.Tools {
 			names[i] = tool.Name
 		}
-		t.Fatalf("expected 3 tools after stop, got %d: %v", len(toolsList.Tools), names)
+		t.Fatalf("expected 4 tools after stop, got %d: %v", len(toolsList.Tools), names)
 	}
 
 	// 8. Close client writer → server sees EOF → exits cleanly.
@@ -236,7 +236,7 @@ func toolsProvider(p *proxy.Proxy) mcp.ToolsProvider {
 func toolHandler(ctx context.Context, p *proxy.Proxy) mcp.ToolHandler {
 	return func(params mcp.ToolCallParams) (mcp.ToolResult, error) {
 		switch params.Name {
-		case "start_mcp":
+		case "start_stdio_mcp", "start_http_mcp":
 			return handleStartMCP(ctx, p, params.Arguments)
 		case "stop_mcp":
 			return handleStopMCP(p, params.Arguments)
@@ -258,24 +258,30 @@ func toolHandler(ctx context.Context, p *proxy.Proxy) mcp.ToolHandler {
 func supervisorTools() []mcp.Tool {
 	return []mcp.Tool{
 		{
-			Name:        "start_mcp",
-			Description: "Start or connect to a child MCP server and proxy its tools",
+			Name:        "start_stdio_mcp",
+			Description: "Start a child MCP server via stdio transport and proxy its tools",
 			InputSchema: mustJSON(map[string]any{
 				"type": "object",
 				"properties": map[string]any{
-					"name": map[string]any{"type": "string"},
+					"name":    map[string]any{"type": "string"},
+					"command": map[string]any{"type": "string"},
+					"args":    map[string]any{"type": "array"},
+					"env":     map[string]any{"type": "object"},
 				},
-				"required": []string{"name"},
-				"oneOf": []any{
-					map[string]any{
-						"required":   []string{"command"},
-						"properties": map[string]any{"command": map[string]any{"type": "string"}, "args": map[string]any{"type": "array"}, "env": map[string]any{"type": "object"}},
-					},
-					map[string]any{
-						"required":   []string{"url"},
-						"properties": map[string]any{"url": map[string]any{"type": "string"}, "headers": map[string]any{"type": "object"}},
-					},
+				"required": []string{"name", "command"},
+			}),
+		},
+		{
+			Name:        "start_http_mcp",
+			Description: "Connect to a remote MCP server via Streamable HTTP transport and proxy its tools",
+			InputSchema: mustJSON(map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"name":    map[string]any{"type": "string"},
+					"url":     map[string]any{"type": "string"},
+					"headers": map[string]any{"type": "object"},
 				},
+				"required": []string{"name", "url"},
 			}),
 		},
 		{
